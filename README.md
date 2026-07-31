@@ -79,13 +79,11 @@ Web Speech API → Text-to-Speech (Arabic)
 
 ```
 chatbot/
-├── app.py                  # Flask backend — routes, Whisper, Cohere
+├── app.py                  # Flask backend; routes, Whisper, Cohere
 ├── templates/
-│   └── index.html          # Frontend UI — recording, chat display, TTS
+│   └── index.html          # Frontend UI; recording, chat display, TTS
 ├── static/
-│   └── style.css           # Dark-mode chat styling
-├── docs/
-│   └── preview.png         # Interface screenshot
+│   └── style.css           #  chat styling
 └── README.md
 ```
 
