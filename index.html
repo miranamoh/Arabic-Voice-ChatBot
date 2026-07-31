@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>شات بوت صوتي</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <div class="chat-container">
+    <header class="chat-header">
+      <div class="bot-avatar">🤖</div>
+      <div>
+        <h1>المساعد الصوتي</h1>
+        <p id="statusText">اضغط على الميكروفون وابدأ الحديث</p>
+      </div>
+    </header>
+
+    <div id="chatLog" class="chat-log">
+      <div class="message bot">
+        <p>مرحبًا! اضغط على زر الميكروفون وتحدّث معي بصوتك 🎤</p>
+      </div>
+    </div>
+
+    <div class="chat-input">
+      <button id="micBtn" class="mic-btn" title="اضغط للتحدث">
+        <span id="micIcon">🎤</span>
+      </button>
+      <p class="hint">اضغط مرة للتسجيل، واضغط مرة ثانية للإرسال</p>
+    </div>
+  </div>
+
+  <script>
+    const micBtn = document.getElementById("micBtn");
+    const micIcon = document.getElementById("micIcon");
+    const statusText = document.getElementById("statusText");
+    const chatLog = document.getElementById("chatLog");
+
+    let mediaRecorder;
+    let audioChunks = [];
+    let isRecording = false;
+
+    function addMessage(text, role) {
+      const div = document.createElement("div");
+      div.className = `message ${role}`;
+      div.innerHTML = `<p>${text}</p>`;
+      chatLog.appendChild(div);
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+
+    function setStatus(text) {
+      statusText.textContent = text;
+    }
+
+    micBtn.addEventListener("click", async () => {
+      if (!isRecording) {
+        // ابدأ التسجيل
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+
+        mediaRecorder.onstop = async () => {
+          setStatus("جار تحليل الصوت...");
+          const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+
+          // أرسل الصوت للـ Flask
+          const formData = new FormData();
+          formData.append("audio", audioBlob, "recording.webm");
+
+          try {
+            // الخطوة 1: تحويل الصوت لنص
+            const transcribeRes = await fetch("/transcribe", {
+              method: "POST",
+              body: formData
+            });
+            const transcribeData = await transcribeRes.json();
+
+            if (transcribeData.error) {
+              setStatus("خطأ: " + transcribeData.error);
+              return;
+            }
+
+            const userText = transcribeData.text;
+            addMessage(userText, "user");
+            setStatus("جار الحصول على رد...");
+
+            // الخطوة 2: رسالة تفكير
+            const thinkingDiv = document.createElement("div");
+            thinkingDiv.className = "message bot thinking";
+            thinkingDiv.innerHTML = "<p>جار التفكير...</p>";
+            chatLog.appendChild(thinkingDiv);
+
+            // الخطوة 3: الحصول على رد Cohere
+            const chatRes = await fetch("/chat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text: userText })
+            });
+            const chatData = await chatRes.json();
+            thinkingDiv.remove();
+
+            if (chatData.error) {
+              setStatus("خطأ: " + chatData.error);
+              return;
+            }
+
+            addMessage(chatData.reply, "bot");
+
+            // الخطوة 4: تحويل الرد لصوت
+            const utterance = new SpeechSynthesisUtterance(chatData.reply);
+            utterance.lang = "ar-SA";
+            speechSynthesis.speak(utterance);
+
+            setStatus("اضغط على الميكروفون وابدأ الحديث");
+
+          } catch (err) {
+            setStatus("حدث خطأ، حاول مرة أخرى");
+            console.error(err);
+          }
+        };
+
+        mediaRecorder.start();
+        isRecording = true;
+        micBtn.classList.add("listening");
+        micIcon.textContent = "⏹️";
+        setStatus("جار التسجيل... اضغط مرة ثانية للإرسال");
+
+      } else {
+        // أوقف التسجيل
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach(t => t.stop());
+        isRecording = false;
+        micBtn.classList.remove("listening");
+        micIcon.textContent = "🎤";
+      }
+    });
+  </script>
+
+</body>
+</html>
